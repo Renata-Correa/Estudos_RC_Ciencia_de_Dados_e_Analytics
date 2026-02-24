@@ -8,7 +8,7 @@
 ![Databricks](https://img.shields.io/badge/Databricks-Data%20Platform-FF6F59?logo=databricks)
 ![Learning](https://img.shields.io/badge/focus-aprendizado-90DBA4)
 
-**Onde dados, bugs e café se encontram pra fazer mágica acontecer ☕✨**
+**Onde dados, bugs e café se encontram para fazer a mágica acontecer ☕✨**
 
 Este repositório é meu laboratório pessoal de estudos em **Ciência de Dados e Analytics**. Aqui a teoria vira prática, os erros viram aprendizado e cada commit conta.
 
