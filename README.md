@@ -16,12 +16,3 @@ Se quebrou, aprendi.
 Se aprendi, commitei 😅
 
 🚧 Em constante evolução.
-
-rm -rf .git
-git init
-git add .
-git commit -m "Versão final do projeto"
-git branch -M main
-git remote add origin https://github.com/SEU-USUARIO/SEU-REPOSITORIO.git
-git push --force origin main
-
