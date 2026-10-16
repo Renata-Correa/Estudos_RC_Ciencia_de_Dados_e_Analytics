@@ -1,0 +1,247 @@
+
+let
+    // ============================================================
+    // CONFIGURAÇÃO
+    // ============================================================
+    
+    Fonte = Excel.CurrentWorkbook(){[Name="tblPosts"]}[Content],
+
+    // Mantém o tipo original das colunas
+    Tipos = Table.TransformColumnTypes(Fonte,{
+        {"Post Title", type text},
+        {"Date", type date},
+        {"Influencer Name", type text},
+        {"Platform", type text},
+        {"Keyword Group", type text},
+        {"Content Type", type text},
+        {"Likes", Int64.Type},
+        {"Comments", Int64.Type},
+        {"Shares", Int64.Type},
+        {"Saves", Int64.Type},
+        {"Engagements (total)", Int64.Type},
+        {"Video Views", Int64.Type},
+        {"Video Plays", Int64.Type},
+        {"Potential Reach", Int64.Type},
+        {"Engagement Rate", Percentage.Type}
+        }),
+    #"Colunas Removidas" = Table.RemoveColumns(Tipos,{
+        "Handle",
+        "Video Plays Organic",
+        "Video Plays Paid",
+        "Reach",
+        "Impressions",
+        "Story Replies",
+        "Story Tap Fwd",
+        "Story Tap Back",
+        "Story Exits",
+        "Stream Avg Viewers",
+        "Stream Peak Viewers",
+        "Stream Duration",
+        "Est Impressions",
+        "Brand Vitality Score (VIT)",
+        "Visibility",
+        "Impact",
+        "Trust",
+        "Influencer UID"}),
+    // ============================================================
+    // FUNÇÃO PARA EXTRAIR @MENÇÕES
+    // ============================================================
+
+    ExtrairMencoes = (texto as nullable text) as list =>
+        let
+            TextoSeguro = if texto = null then "" else texto,
+
+            // Divide o texto em palavras
+            Palavras = Text.SplitAny(
+                TextoSeguro,
+                " " & Character.FromNumber(9) & Character.FromNumber(10) & Character.FromNumber(13)
+            ),
+
+            // Mantém palavras que possuem @
+            ComArroba = List.Select(
+                Palavras,
+                each Text.Contains(_, "@")
+            ),
+
+            // Limpa pontuação antes/depois
+            Limpos = List.Transform(
+                ComArroba,
+                each
+                    let
+                        Palavra = _,
+                        Posicao = Text.PositionOf(Palavra, "@"),
+                        DepoisDoArroba =
+                            if Posicao >= 0
+                            then Text.Range(Palavra, Posicao)
+                            else "",
+                        Limpo = Text.Trim(
+                            DepoisDoArroba,
+                            {" ", ",", ".", ";", ":", "!", "?", "(", ")", "[", "]", "{", "}", """", "'", "“", "”"}
+                        )
+                    in
+                        Limpo
+            ),
+
+            // Remove itens vazios
+            NaoVazios = List.Select(
+                Limpos,
+                each _ <> ""
+            )
+        in
+            NaoVazios,
+
+    // ============================================================
+    // FUNÇÃO PARA EXTRAIR #HASHTAGS
+    // ============================================================
+
+    ExtrairHashtags = (texto as nullable text) as list =>
+        let
+            TextoSeguro = if texto = null then "" else texto,
+
+            Palavras = Text.SplitAny(
+                TextoSeguro,
+                " " & Character.FromNumber(9) & Character.FromNumber(10) & Character.FromNumber(13)
+            ),
+
+            ComHashtag = List.Select(
+                Palavras,
+                each Text.Contains(_, "#")
+            ),
+
+            Limpos = List.Transform(
+                ComHashtag,
+                each
+                    let
+                        Palavra = _,
+                        Posicao = Text.PositionOf(Palavra, "#"),
+                        DepoisDaHashtag =
+                            if Posicao >= 0
+                            then Text.Range(Palavra, Posicao)
+                            else "",
+                        Limpo = Text.Trim(
+                            DepoisDaHashtag,
+                            {" ", ",", ".", ";", ":", "!", "?", "(", ")", "[", "]", "{", "}", """", "'", "“", "”"}
+                        )
+                    in
+                        Limpo
+            ),
+
+            NaoVazios = List.Select(
+                Limpos,
+                each _ <> ""
+            )
+        in
+            NaoVazios,
+
+    // ============================================================
+    // EXTRAI AS @
+    // ============================================================
+
+    AdicionarMencoes = Table.AddColumn(
+        #"Colunas Removidas",
+        "Mencoes",
+        each ExtrairMencoes([Post Title]),
+        type list
+    ),
+
+    // Descobre automaticamente o maior número de @ encontrado
+    MaiorNumeroMencoes =
+        if Table.RowCount(AdicionarMencoes) = 0
+        then 0
+        else List.Max(
+            List.Transform(
+                AdicionarMencoes[Mencoes],
+                each List.Count(_)
+            )
+        ),
+
+    // Cria @ 1, @ 2, @ 3...
+    ColunasMencoes =
+        if MaiorNumeroMencoes = 0
+        then AdicionarMencoes
+        else
+            List.Accumulate(
+                {1..MaiorNumeroMencoes},
+                AdicionarMencoes,
+                (Tabela, Numero) =>
+                    Table.AddColumn(
+                        Tabela,
+                        "@ " & Text.From(Numero),
+                        each
+                            if List.Count([Mencoes]) >= Numero
+                            then [Mencoes]{Numero - 1}
+                            else null,
+                        type text
+                    )
+            ),
+
+    RemoverListaMencoes = Table.RemoveColumns(
+        ColunasMencoes,
+        {"Mencoes"}
+    ),
+
+    // ============================================================
+    // EXTRAI AS #
+    // ============================================================
+
+    AdicionarHashtags = Table.AddColumn(
+        RemoverListaMencoes,
+        "Hashtags",
+        each ExtrairHashtags([Post Title]),
+        type list
+    ),
+
+    // Descobre automaticamente o maior número de # encontrado
+    MaiorNumeroHashtags =
+        if Table.RowCount(AdicionarHashtags) = 0
+        then 0
+        else List.Max(
+            List.Transform(
+                AdicionarHashtags[Hashtags],
+                each List.Count(_)
+            )
+        ),
+
+    // Cria # 1, # 2, # 3...
+    ColunasHashtags =
+        if MaiorNumeroHashtags = 0
+        then AdicionarHashtags
+        else
+            List.Accumulate(
+                {1..MaiorNumeroHashtags},
+                AdicionarHashtags,
+                (Tabela, Numero) =>
+                    Table.AddColumn(
+                        Tabela,
+                        "# " & Text.From(Numero),
+                        each
+                            if List.Count([Hashtags]) >= Numero
+                            then [Hashtags]{Numero - 1}
+                            else null,
+                        type text
+                    )
+            ),
+
+    Resultado = Table.RemoveColumns(
+        ColunasHashtags,
+        {"Hashtags"}
+    ),
+#"Platform Padronizado" =
+    Table.TransformColumns(
+        Resultado,
+        {
+            {
+                "Platform",
+                each
+                    if Text.Lower(_) = "instagram" then "Instagram"
+                    else if Text.Lower(_) = "facebook" then "Facebook"
+                    else if Text.Lower(_) = "twitter" then "X"
+                    else if Text.Lower(_) = "tiktok" then "TikTok"
+                    else if Text.Lower(_) = "youtube" then "YouTube"
+                    else _,
+                type text
+            }
+        }
+    )
+in
+    #"Platform Padronizado"
